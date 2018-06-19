@@ -1,0 +1,7 @@
+*.swp
+*.pyc
+*.npy
+.DS_Store
+*.pgn
+*.pth.tar
+venv/
