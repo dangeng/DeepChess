@@ -5,3 +5,4 @@
 *.pgn
 *.pth.tar
 venv/
+runs/

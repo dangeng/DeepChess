@@ -11,6 +11,8 @@ from torchvision.utils import save_image
 import numpy as np
 from tensorboardX import SummaryWriter
 
+from models.autoencoder import AE
+
 parser = argparse.ArgumentParser(description='VAE MNIST Example')
 parser.add_argument('--batch-size', type=int, default=128, metavar='N',
                     help='input batch size for training (default: 128)')
@@ -33,14 +35,11 @@ kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
 
 #writer = SummaryWriter()
 
-games = np.load('../data/bitboards.npy')
-#games = games - np.mean(games, axis=0)
+games = np.load('data/bitboards.npy')
 
 np.random.shuffle(games)
 train_games = games[:int(len(games)*.8)]
-#train_games = games[:10000]
 test_games = games[int(len(games)*.8):]
-#test_games = games[-10:]
 
 class TrainSet(Dataset):
     def __init__(self):
@@ -65,52 +64,14 @@ class TestSet(Dataset):
 train_loader = torch.utils.data.DataLoader(TrainSet(),batch_size=128, shuffle=True)
 test_loader = torch.utils.data.DataLoader(TestSet(),batch_size=128, shuffle=True)
 
-class VAE(nn.Module):
-    def __init__(self):
-        super(VAE, self).__init__()
-
-        self.fce1 = nn.Linear(773, 600)
-        self.fce2 = nn.Linear(600, 400)
-        self.fce3 = nn.Linear(400, 200)
-        self.fce4 = nn.Linear(200, 100)
-
-        self.fcd1 = nn.Linear(100, 200)
-        self.fcd2 = nn.Linear(200, 400)
-        self.fcd3 = nn.Linear(400, 600)
-        self.fcd4 = nn.Linear(600, 773)
-
-    def encode(self, x):
-        x = F.leaky_relu(self.fce1(x))
-        x = F.leaky_relu(self.fce2(x))
-        x = F.leaky_relu(self.fce3(x))
-        x = F.leaky_relu(self.fce4(x))
-        return x
-
-    def decode(self, z):
-        z = F.leaky_relu(self.fcd1(z))
-        z = F.leaky_relu(self.fcd2(z))
-        z = F.leaky_relu(self.fcd3(z))
-        z = F.sigmoid(self.fcd4(z))
-        return z
-
-    def forward(self, x):
-        enc = self.encode(x.view(-1, 773))
-        return self.decode(enc), enc
-
-
-model = VAE().to(device)
+model = AE().to(device)
 optimizer = optim.Adam(model.parameters(), lr=1e-3)
 
-state = torch.load('../checkpoints/ae_6.pth.tar')
-model.load_state_dict(state['state_dict'])
-raise Exception('stop')
 
-# Reconstruction + KL divergence losses summed over all elements and batch
 def loss_function(recon_x, x):
     BCE = F.binary_cross_entropy(recon_x, x.view(-1, 773), size_average=False)
 
     return BCE
-
 
 def train(epoch):
     model.train()
@@ -152,11 +113,6 @@ def save(epoch):
              'optimizer': optimizer.state_dict(),
              'epoch': epoch + 1}
     torch.save(state, '../checkpoints/ae_{}.pth.tar'.format(epoch))
-
-def adjust_learning_rate(optimizer):
-    ''' Divide learning rate by 10 '''
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = param_group['lr'] * 0.1
 
 def recon(game):
     recon, _ = model(torch.from_numpy(game).type(torch.FloatTensor))
