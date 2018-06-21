@@ -65,12 +65,11 @@ train_loader = torch.utils.data.DataLoader(TrainSet(),batch_size=128, shuffle=Tr
 test_loader = torch.utils.data.DataLoader(TestSet(),batch_size=128, shuffle=True)
 
 model = AE().to(device)
-optimizer = optim.Adam(model.parameters(), lr=1e-3)
+optimizer = optim.Adam(model.parameters(), lr=1e-2)
 
 
 def loss_function(recon_x, x):
     BCE = F.binary_cross_entropy(recon_x, x.view(-1, 773), size_average=False)
-
     return BCE
 
 def train(epoch):
@@ -98,29 +97,46 @@ def train(epoch):
 def test(epoch):
     model.eval()
     test_loss = 0
+    total_diff = 0
     with torch.no_grad():
         for i, (data, _) in enumerate(test_loader):
             data = data.to(device)
             recon_batch, enc = model(data)
+            pred = (recon_batch.detach().numpy() > .5).astype(int)
+            total_diff += np.sum(data.detach().numpy() != pred) / float(data.shape[0])
             test_loss += loss_function(recon_batch, data).item()
 
     test_loss /= len(test_loader.dataset)
+    total_diff /= len(test_loader.dataset)
     print('====> Test set loss: {:.4f}'.format(test_loss))
+    print('====> Test set diff: {:.4f}'.format(total_diff))
     writer.add_scalar('data/test_loss', test_loss, epoch)
+    writer.add_scalar('data/test_diff', total_diff, epoch)
 
 def save(epoch):
     state = {'state_dict': model.state_dict(),
              'optimizer': optimizer.state_dict(),
              'epoch': epoch + 1}
-    torch.save(state, '../checkpoints/ae_{}.pth.tar'.format(epoch))
+    torch.save(state, 'checkpoints/ae_{}.pth.tar'.format(epoch))
 
 def recon(game):
     recon, _ = model(torch.from_numpy(game).type(torch.FloatTensor))
     recon = (recon.detach().numpy() > .5).astype(int)
     return recon
 
-for epoch in range(1, args.epochs + 1):
+start_epoch = 1
+resume = True
+if resume:
+    state = torch.load('./checkpoints/ae_30.pth.tar')
+    model.load_state_dict(state['state_dict'])
+    optimizer.load_state_dict(state['optimizer'])
+    start_epoch = state['epoch']
+
+for epoch in range(start_epoch, args.epochs + 1):
     train(epoch)
     test(epoch)
     save(epoch)
 
+    # Adjust training rate
+    for params in optimizer.param_groups:
+        params['lr'] *= .95
