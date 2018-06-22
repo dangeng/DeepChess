@@ -1,5 +1,6 @@
 from __future__ import print_function
 import argparse
+import os
 import torch
 import torch.utils.data
 from torch import nn, optim
@@ -16,6 +17,10 @@ from models.autoencoder import AE
 parser = argparse.ArgumentParser(description='VAE MNIST Example')
 parser.add_argument('--batch-size', type=int, default=128, metavar='N',
                     help='input batch size for training (default: 128)')
+parser.add_argument('--lr', type=float, default=5e-3, metavar='N',
+                    help='learning rate (default: 5e-3)')
+parser.add_argument('--decay', type=float, default=.95, metavar='N',
+                    help='decay rate of learning rate (default: .95)')
 parser.add_argument('--epochs', type=int, default=10, metavar='N',
                     help='number of epochs to train (default: 10)')
 parser.add_argument('--no-cuda', action='store_true', default=False,
@@ -33,7 +38,11 @@ device = torch.device("cuda" if args.cuda else "cpu")
 
 kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
 
-writer = SummaryWriter()
+lr = args.lr
+decay = args.decay
+batch_size=args.batch_size
+
+#writer = SummaryWriter(comment='lr: {} | decay: {} | batch size: {}'.format(lr, decay, batch_size))
 
 games = np.load('data/bitboards.npy')
 
@@ -61,16 +70,20 @@ class TestSet(Dataset):
     def __len__(self):
         return test_games.shape[0]
 
-train_loader = torch.utils.data.DataLoader(TrainSet(),batch_size=128, shuffle=True)
-test_loader = torch.utils.data.DataLoader(TestSet(),batch_size=128, shuffle=True)
+train_loader = torch.utils.data.DataLoader(TrainSet(),batch_size=batch_size, shuffle=True)
+test_loader = torch.utils.data.DataLoader(TestSet(),batch_size=batch_size, shuffle=True)
 
 model = AE().to(device)
-optimizer = optim.Adam(model.parameters(), lr=1e-2)
+optimizer = optim.Adam(model.parameters(), lr=lr)
 
 
 def loss_function(recon_x, x):
     BCE = F.binary_cross_entropy(recon_x, x.view(-1, 773), size_average=False)
     return BCE
+
+def mse_loss_function(recon_x, x):
+    MSE = F.mse_loss(recon_x, x.view(-1, 773), size_average=False)
+    return MSE
 
 def train(epoch):
     model.train()
@@ -97,31 +110,39 @@ def train(epoch):
 def test(epoch):
     model.eval()
     test_loss = 0
+    test_loss_mse = 0
     total_diff = 0
     with torch.no_grad():
         for i, (data, _) in enumerate(test_loader):
             data = data.to(device)
             recon_batch, enc = model(data)
-            pred = (recon_batch.detach().numpy() > .5).astype(int)
-            total_diff += np.sum(data.detach().numpy() != pred) / float(data.shape[0])
+            pred = (recon_batch.cpu().detach().numpy() > .5).astype(int)
+            total_diff += float(np.sum(data.cpu().detach().numpy() != pred))
             test_loss += loss_function(recon_batch, data).item()
+            test_loss_mse += mse_loss_function(recon_batch, data).item()
 
     test_loss /= len(test_loader.dataset)
+    test_loss_mse /= len(test_loader.dataset)
     total_diff /= len(test_loader.dataset)
     print('====> Test set loss: {:.4f}'.format(test_loss))
+    print('====> Test set loss (mse): {:.4f}'.format(test_loss_mse))
     print('====> Test set diff: {:.4f}'.format(total_diff))
     writer.add_scalar('data/test_loss', test_loss, epoch)
+    writer.add_scalar('data/test_loss_mse', test_loss_mse, epoch)
     writer.add_scalar('data/test_diff', total_diff, epoch)
 
 def save(epoch):
     state = {'state_dict': model.state_dict(),
              'optimizer': optimizer.state_dict(),
              'epoch': epoch + 1}
-    torch.save(state, 'checkpoints/ae_{}.pth.tar'.format(epoch))
+    save_dir = 'checkpoints/lr_{}_decay_{}'.format(int(lr*1000), int(decay*100))
+    if not os.path.isdir(save_dir):
+        os.mkdir(save_dir)
+    torch.save(state, os.path.join(save_dir, 'ae_{}.pth.tar'.format(epoch)))
 
 def recon(game):
     recon, _ = model(torch.from_numpy(game).type(torch.FloatTensor))
-    recon = (recon.detach().numpy() > .5).astype(int)
+    recon = (recon.cpu().detach().numpy() > .5).astype(int)
     return recon
 
 start_epoch = 1
@@ -140,4 +161,4 @@ for epoch in range(start_epoch, args.epochs + 1):
 
     # Adjust training rate
     for params in optimizer.param_groups:
-        params['lr'] *= .95
+        params['lr'] *= decay

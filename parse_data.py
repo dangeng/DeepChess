@@ -46,7 +46,7 @@ def get_result(game):
     else:
         return 0
 
-games = open('games.pgn')
+games = open('data/games.pgn')
 bitboards = []
 labels = []
 num_games = 0
@@ -54,6 +54,7 @@ num_games = 0
 for i in range(845910):
     if num_games % 10 == 0:
         print(num_games)
+        print(len(bitboards))
 
     num_games += 1
 
@@ -66,8 +67,9 @@ for i in range(845910):
     for move in game.main_line():
         board.push(move)
         bitboard = get_bitboard(board)
+
         bitboards.append(bitboard)
         labels.append(result)
 
 bitboards = np.array(bitboards)
-
+labels = np.array(labels)
