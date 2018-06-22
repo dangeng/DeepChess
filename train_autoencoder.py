@@ -127,7 +127,8 @@ def recon(game):
 start_epoch = 1
 resume = True
 if resume:
-    state = torch.load('./checkpoints/ae_30.pth.tar')
+    state = torch.load('./checkpoints/best_autoencoder.pth.tar', 
+                        map_location=lambda storage, loc: storage)
     model.load_state_dict(state['state_dict'])
     optimizer.load_state_dict(state['optimizer'])
     start_epoch = state['epoch']
