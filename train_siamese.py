@@ -1,5 +1,6 @@
 from __future__ import print_function
 import argparse
+import os
 import torch
 import torch.utils.data
 from torch import nn, optim
@@ -15,6 +16,10 @@ from models.siamese import Siamese
 parser = argparse.ArgumentParser(description='VAE MNIST Example')
 parser.add_argument('--batch-size', type=int, default=128, metavar='N',
                     help='input batch size for training (default: 128)')
+parser.add_argument('--lr', type=float, default=.01, metavar='N',
+                    help='learning rate (default: .01)')
+parser.add_argument('--decay', type=int, default=.99, metavar='N',
+                    help='decay rate of learning rate (default: .99)')
 parser.add_argument('--epochs', type=int, default=10, metavar='N',
                     help='number of epochs to train (default: 10)')
 parser.add_argument('--no-cuda', action='store_true', default=False,
@@ -32,7 +37,11 @@ device = torch.device("cuda" if args.cuda else "cpu")
 
 kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
 
-writer = SummaryWriter()
+lr = args.lr
+decay = args.decay
+batch_size = args.batch_size
+
+writer = SummaryWriter(comment='lr: {} | decay: {} | batch size: {}'.format(lr, decay, batch_size))
 
 print('Loading data...')
 games = np.load('./data/features.npy')
@@ -104,13 +113,13 @@ class TestSet(Dataset):
     def __len__(self):
         return self.length
 
-train_loader = torch.utils.data.DataLoader(TrainSet(1000000),batch_size=128, shuffle=True)
-test_loader = torch.utils.data.DataLoader(TestSet(100000),batch_size=128, shuffle=True)
+train_loader = torch.utils.data.DataLoader(TrainSet(1000000),batch_size=batch_size, shuffle=True)
+test_loader = torch.utils.data.DataLoader(TestSet(100000),batch_size=batch_size, shuffle=True)
 
 
 print('Buidling model...')
 model = Siamese().to(device)
-optimizer = optim.Adam(model.parameters(), lr=1e-3)
+optimizer = optim.Adam(model.parameters(), lr=lr)
 
 e = enumerate(train_loader)
 b, (data, label) = next(e)
@@ -119,7 +128,6 @@ b, (data, label) = next(e)
 # Reconstruction + KL divergence losses summed over all elements and batch
 def loss_function(pred, label):
     BCE = F.binary_cross_entropy(pred, label, size_average=False)
-
     return BCE
 
 
@@ -148,6 +156,13 @@ def train(epoch):
     print('====> Epoch: {} Average loss: {:.4f}'.format(
           epoch, train_loss / len(train_loader.dataset)))
 
+def get_acc():
+    e = enumerate(test_loader)
+    correct = 0
+    for batch_idx, (data, label) in e:
+        pred = model(data.to(device))
+        correct += np.sum((pred > .5).cpu().detach().numpy() * label.numpy())
+    return correct / float(test_loader.dataset.length)
 
 def test(epoch):
     model.eval()
@@ -167,21 +182,26 @@ def save(epoch):
     state = {'state_dict': model.state_dict(),
              'optimizer': optimizer.state_dict(),
              'epoch': epoch + 1}
-    torch.save(state, 'checkpoints/siamese/epoch_{}.pth.tar'.format(epoch))
+    save_dir = 'checkpoints/siamese/lr_{}_decay_{}'.format(int(lr*1000), int(decay*100))
+    if not os.path.isdir(save_dir):
+        os.mkdir(save_dir)
+    torch.save(state, os.path.join(save_dir, 'ae_{}.pth.tar'.format(epoch)))
 
-def adjust_learning_rate(optimizer):
-    ''' Divide learning rate by 10 '''
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = param_group['lr'] * 0.1
-
-def recon(game):
-    recon, _ = model(torch.from_numpy(game).type(torch.FloatTensor))
-    recon = (recon.detach().numpy() > .5).astype(int)
-    return recon
+start_epoch = 1
+resume = True
+if resume:
+    state = torch.load('./checkpoints/siamese/lr_10_decay_99/ae_390.pth.tar')
+    model.load_state_dict(state['state_dict'])
+    optimizer.load_state_dict(state['optimizer'])
+    start_epoch = state['epoch']
 
 print('Begin train...')
-for epoch in range(1, args.epochs + 1):
+for epoch in range(start_epoch, args.epochs + 1):
     train(epoch)
     test(epoch)
     save(epoch)
+
+    # Adjust learning rate
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = param_group['lr'] * decay
 
