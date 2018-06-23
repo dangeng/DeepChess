@@ -42,7 +42,7 @@ lr = args.lr
 decay = args.decay
 batch_size=args.batch_size
 
-#writer = SummaryWriter(comment='lr: {} | decay: {} | batch size: {}'.format(lr, decay, batch_size))
+writer = SummaryWriter(comment='lr: {} | decay: {} | batch size: {}'.format(lr, decay, batch_size))
 
 games = np.load('data/bitboards.npy')
 
@@ -135,7 +135,7 @@ def save(epoch):
     state = {'state_dict': model.state_dict(),
              'optimizer': optimizer.state_dict(),
              'epoch': epoch + 1}
-    save_dir = 'checkpoints/lr_{}_decay_{}'.format(int(lr*1000), int(decay*100))
+    save_dir = 'checkpoints/autoencoder/lr_{}_decay_{}'.format(int(lr*1000), int(decay*100))
     if not os.path.isdir(save_dir):
         os.mkdir(save_dir)
     torch.save(state, os.path.join(save_dir, 'ae_{}.pth.tar'.format(epoch)))
@@ -159,6 +159,6 @@ for epoch in range(start_epoch, args.epochs + 1):
     test(epoch)
     save(epoch)
 
-    # Adjust training rate
+    # Adjust learning rate
     for params in optimizer.param_groups:
         params['lr'] *= decay
