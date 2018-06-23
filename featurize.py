@@ -1,14 +1,15 @@
-from models.auto_enc import AE
+from models.autoencoder import AE
 import numpy as np
 import torch
 
 model = AE()
-state = torch.load('checkpoints/ae_10.pth.tar')
+state = torch.load('checkpoints/best_autoencoder.pth.tar')
 model.load_state_dict(state['state_dict'])
 games = np.load('data/bitboards.npy')
 
-# got lucky, 17 divides number of samples evenly
-batched_games = np.split(games, 17) 
+# 1499856 samples...
+# got lucky, 48 divides number of samples evenly
+batched_games = np.split(games, 48) 
 
 def featurize(game):
     recon, enc = model(torch.from_numpy(game).type(torch.FloatTensor))
