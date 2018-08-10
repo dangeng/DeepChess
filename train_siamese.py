@@ -190,7 +190,7 @@ def save(epoch):
 start_epoch = 1
 resume = True
 if resume:
-    state = torch.load('./checkpoints/siamese/lr_10_decay_99/ae_390.pth.tar')
+    state = torch.load('./checkpoints/best_siamese.pth.tar', map_location=lambda storage, loc: storage)
     model.load_state_dict(state['state_dict'])
     optimizer.load_state_dict(state['optimizer'])
     start_epoch = state['epoch']

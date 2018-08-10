@@ -70,8 +70,8 @@ class TestSet(Dataset):
     def __len__(self):
         return test_games.shape[0]
 
-train_loader = torch.utils.data.DataLoader(TrainSet(),batch_size=batch_size, shuffle=True)
-test_loader = torch.utils.data.DataLoader(TestSet(),batch_size=batch_size, shuffle=True)
+train_loader = torch.utils.data.DataLoader(TrainSet(), batch_size=batch_size, shuffle=True)
+test_loader = torch.utils.data.DataLoader(TestSet(), batch_size=batch_size, shuffle=True)
 
 model = AE().to(device)
 optimizer = optim.Adam(model.parameters(), lr=lr)
